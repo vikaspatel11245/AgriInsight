@@ -106,7 +106,9 @@ class RiskAssessmentResponse(BaseModel):
     categories: Dict[str, CategoryRisk]
     mitigationAdvisoryEn: List[str]
     mitigationAdvisoryMr: List[str]
-    class WhatIfYieldRequest(BaseModel):
+
+
+class WhatIfYieldRequest(BaseModel):
     district: str = Field(..., example="Nashik")
     crop: str = Field(..., example="Soyabean")
     season: str = Field("Kharif", example="Kharif")

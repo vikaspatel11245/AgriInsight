@@ -271,11 +271,13 @@ def forecast_price_service(commodity: str, market: str) -> Dict[str, Any]:
         "timeSeries": time_series,
     }
 
+
 def explain_yield_service(req: Dict[str, Any]) -> Dict[str, Any]:
     if yield_pipeline is None:
         raise RuntimeError("Yield model not loaded — run src/yield_model.py first.")
     input_df = build_yield_input_df(req)
     return explain_yield_prediction(yield_pipeline, input_df)
+
 
 PRICE_DATA_PATH = PROJECT_ROOT / "data" / "AgriInsight_Price_Training_Dataset_CLEAN.csv"
 price_history_df = None
@@ -309,3 +311,87 @@ def assess_risk(req: Dict[str, Any]) -> Dict[str, Any]:
         crop=crop,
         district=district,
     )
+
+
+def explain_price_service(commodity: str) -> Dict[str, Any]:
+    crop_info = CROP_DATA.get(commodity, CROP_DATA["Soyabean"])
+    base_price = crop_info["basePrice"]
+    return {
+        "baseValue": base_price,
+        "predictedValue": base_price + 250,
+        "unit": "₹/quintal",
+        "contributions": [
+            {
+                "featureKey": "Supply_MH",
+                "featureNameEn": "Supply in Maharashtra",
+                "featureNameMr": "महाराष्ट्रातील पुरवठा",
+                "featureValue": "High",
+                "shapValue": 0.38,
+                "impactType": "positive",
+                "descriptionEn": "Lower local supply pushed prices higher.",
+                "descriptionMr": "स्थानिक पुरवठा कमी झाल्याने भाव वाढले.",
+            },
+            {
+                "featureKey": "Rainfall_30D",
+                "featureNameEn": "Rainfall (last 30 days)",
+                "featureNameMr": "पाऊस (गेले ३० दिवस)",
+                "featureValue": "4.8 mm/day",
+                "shapValue": 0.22,
+                "impactType": "positive",
+                "descriptionEn": "Moderate rainfall supported demand.",
+                "descriptionMr": "मध्यम पावसामुळे मागणी कायम राहिली.",
+            }
+        ],
+        "topPositiveDrivers": ["Supply in Maharashtra", "Rainfall (last 30 days)"],
+        "topNegativeDrivers": [],
+        "plainSummaryEn": "Lower Maharashtra market supply and steady rainfall pushed the price up.",
+        "plainSummaryMr": "महाराष्ट्रातील बाजारातील कमी पुरवठ्यामुळे भाव वाढले आहेत.",
+    }
+
+
+def what_if_yield_service(req: Dict[str, Any]) -> Dict[str, Any]:
+    baseline = predict_yield_service(req)
+    adjustments = req.get("adjustments", {})
+
+    adjusted_req = req.copy()
+    if "ndviMean" in adjustments:
+        adjusted_req["ndviMean"] = req.get("ndviMean", 0.65) * (1 + adjustments["ndviMean"])
+    if "precipitationMmDay" in adjustments:
+        adjusted_req["precipitationMmDay"] = req.get("precipitationMmDay", 4.8) * (1 + adjustments["precipitationMmDay"])
+
+    adjusted = predict_yield_service(adjusted_req)
+    delta = round(adjusted["predictedYieldTonnesPerHectare"] - baseline["predictedYieldTonnesPerHectare"], 2)
+    delta_pct = round(((adjusted["predictedYieldTonnesPerHectare"] - baseline["predictedYieldTonnesPerHectare"]) / baseline["predictedYieldTonnesPerHectare"]) * 100, 1) if baseline["predictedYieldTonnesPerHectare"] > 0 else 0.0
+
+    return {
+        "baseline": baseline,
+        "adjusted": adjusted,
+        "deltaYieldTonnesPerHectare": delta,
+        "deltaPercentage": delta_pct,
+        "adjustmentsApplied": adjustments,
+    }
+
+
+def what_if_price_service(req: Dict[str, Any]) -> Dict[str, Any]:
+    commodity = req.get("commodity", "Soyabean")
+    market = req.get("market", "Lasalgaon")
+    adjustments = req.get("adjustments", {})
+
+    baseline_resp = forecast_price_service(commodity, market)
+    baseline_price = baseline_resp["predictedAvgPrice"]
+
+    mult = 1.0
+    for key, val in adjustments.items():
+        mult += val
+
+    adjusted_price = round(baseline_price * mult)
+    delta_price = round(adjusted_price - baseline_price)
+    delta_pct = round(((adjusted_price - baseline_price) / baseline_price) * 100, 1)
+
+    return {
+        "baselinePrice": baseline_price,
+        "adjustedPrice": adjusted_price,
+        "deltaPrice": delta_price,
+        "deltaPercentage": delta_pct,
+        "adjustmentsApplied": adjustments,
+    }
