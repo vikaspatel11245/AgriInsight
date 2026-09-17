@@ -120,3 +120,87 @@ def explain_yield_prediction(
         ),
         "plainSummaryMr": f"AI मॉडेलने {predicted_value:.2f} टन/हेक्टर अंदाज व्यक्त केला आहे.",
     }
+PRICE_FEATURE_LABELS = {
+    "Price_Lag_1": ("Yesterday's Price", "कालचा भाव"),
+    "Price_Lag_7": ("Price 7 Days Ago", "७ दिवसांपूर्वीचा भाव"),
+    "Price_Lag_14": ("Price 14 Days Ago", "१४ दिवसांपूर्वीचा भाव"),
+    "Price_Lag_30": ("Price 30 Days Ago", "३० दिवसांपूर्वीचा भाव"),
+    "Price_MA_7": ("7-Day Moving Average", "७ दिवसांची सरासरी"),
+    "Price_MA_30": ("30-Day Moving Average", "३० दिवसांची सरासरी"),
+    "Month": ("Month of Year", "महिना"),
+    "DayOfWeek": ("Day of Week", "आठवड्याचा दिवस"),
+    "DayOfYear": ("Day of Year", "वर्षाचा दिवस"),
+    "WeekOfYear": ("Week of Year", "वर्षाचा आठवडा"),
+    "Temperature_C": ("Mean Temperature", "सरासरी तापमान"),
+    "TMin_C": ("Minimum Temperature", "किमान तापमान"),
+    "TMax_C": ("Maximum Temperature", "कमाल तापमान"),
+    "Precipitation_mm_day": ("Precipitation", "पर्जन्यमान"),
+    "WindSpeed_m_s": ("Wind Speed", "वाऱ्याचा वेग"),
+    "Humidity_pct": ("Humidity", "आर्द्रता"),
+    "RootSoilWetness": ("Root Zone Soil Moisture", "मुळांचा ओलावा"),
+    "SurfaceSoilWetness": ("Surface Soil Moisture", "पृष्ठभागावरील ओलावा"),
+    "Irradiance_kWh_m2_day": ("Solar Irradiance", "सौर विकिरण"),
+    "NDVI": ("Satellite NDVI (Canopy Health)", "उपग्रह NDVI"),
+    "Market_Count": ("Number of Reporting Markets", "बाजार समित्यांची संख्या"),
+    "Record_Count": ("Number of Price Records", "भाव नोंदींची संख्या"),
+    "NDVI_was_imputed": ("NDVI Data Quality Flag", "NDVI डेटा गुणवत्ता ध्वज"),
+}
+
+_price_explainer_cache = {}
+
+
+def _price_label(feature_name: str):
+    return PRICE_FEATURE_LABELS.get(feature_name, (feature_name, feature_name))
+
+
+def explain_price_prediction(model, feature_cols, feat_row, top_n: int = 8):
+    """
+    Runs TreeSHAP on the raw XGBoost price model for a single feature row.
+    Unlike the yield pipeline, this model has no ColumnTransformer —
+    feat_row must already be in the exact column order of feature_cols.
+    """
+    cache_key = id(model)
+    if cache_key not in _price_explainer_cache:
+        _price_explainer_cache[cache_key] = shap.TreeExplainer(model)
+    explainer = _price_explainer_cache[cache_key]
+
+    X = feat_row[feature_cols]
+    shap_values = explainer.shap_values(X)
+    row_shap = shap_values[0] if np.ndim(shap_values) > 1 else shap_values
+
+    expected_value = explainer.expected_value
+    base_value = float(np.ravel(expected_value)[0]) if hasattr(expected_value, "__len__") else float(expected_value)
+    predicted_value = float(base_value + row_shap.sum())
+
+    contributions = []
+    for name, raw_val, sv in zip(feature_cols, X.iloc[0], row_shap):
+        if abs(sv) < 0.5:  # price SHAP values are in ₹, skip trivial contributions
+            continue
+        name_en, name_mr = _price_label(name)
+        contributions.append({
+            "featureKey": name,
+            "featureNameEn": name_en,
+            "featureNameMr": name_mr,
+            "featureValue": round(float(raw_val), 2),
+            "shapValue": round(float(sv), 2),
+            "impactType": "POSITIVE" if sv > 0 else "NEGATIVE",
+            "descriptionEn": f"{name_en} changed the forecast by ₹{sv:+.2f}/quintal.",
+            "descriptionMr": f"{name_mr} मुळे भावात ₹{sv:+.2f}/क्विंटल बदल झाला.",
+        })
+
+    contributions.sort(key=lambda c: abs(c["shapValue"]), reverse=True)
+    top_contributions = contributions[:top_n]
+    positives = [c for c in contributions if c["impactType"] == "POSITIVE"][:3]
+    negatives = [c for c in contributions if c["impactType"] == "NEGATIVE"][:3]
+    top_driver_en = positives[0]["featureNameEn"] if positives else "recent price trend"
+
+    return {
+        "baseValue": round(base_value, 2),
+        "predictedValue": round(predicted_value, 2),
+        "unit": "₹/quintal",
+        "contributions": top_contributions,
+        "topPositiveDrivers": [f"{c['featureNameEn']} ({c['shapValue']:+.2f})" for c in positives],
+        "topNegativeDrivers": [f"{c['featureNameEn']} ({c['shapValue']:+.2f})" for c in negatives],
+        "plainSummaryEn": f"The AI model forecast ₹{predicted_value:.0f}/quintal, driven mainly by {top_driver_en}.",
+        "plainSummaryMr": f"AI मॉडेलने ₹{predicted_value:.0f}/क्विंटल भाव अंदाज व्यक्त केला आहे.",
+    }

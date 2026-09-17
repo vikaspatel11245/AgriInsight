@@ -106,3 +106,35 @@ class RiskAssessmentResponse(BaseModel):
     categories: Dict[str, CategoryRisk]
     mitigationAdvisoryEn: List[str]
     mitigationAdvisoryMr: List[str]
+    class WhatIfYieldRequest(BaseModel):
+    district: str = Field(..., example="Nashik")
+    crop: str = Field(..., example="Soyabean")
+    season: str = Field("Kharif", example="Kharif")
+    areaHectare: float = Field(2.5, example=2.5)
+    adjustments: Dict[str, float] = Field(
+        ..., example={"ndviMean": 0.72, "precipitationMmDay": 6.5}
+    )
+
+
+class WhatIfYieldResponse(BaseModel):
+    baseline: YieldPredictionResponse
+    adjusted: YieldPredictionResponse
+    deltaYieldTonnesPerHectare: float
+    deltaPercentage: float
+    adjustmentsApplied: Dict[str, float]
+
+
+class WhatIfPriceRequest(BaseModel):
+    commodity: str = Field(..., example="Soyabean")
+    market: str = Field(..., example="Latur")
+    adjustments: Dict[str, float] = Field(
+        ..., example={"Precipitation_mm_day": 8.0, "NDVI": 0.70}
+    )
+
+
+class WhatIfPriceResponse(BaseModel):
+    baselinePrice: float
+    adjustedPrice: float
+    deltaPrice: float
+    deltaPercentage: float
+    adjustmentsApplied: Dict[str, float]

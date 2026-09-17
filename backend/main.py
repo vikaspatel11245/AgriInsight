@@ -17,6 +17,18 @@ from backend.services import (
     DISTRICT_DATA,
     CROP_DATA,
 )
+from backend.schemas import (
+    WhatIfYieldRequest,
+    WhatIfYieldResponse,
+    WhatIfPriceRequest,
+    WhatIfPriceResponse,
+)
+from backend.services import (
+    explain_price_service,
+    what_if_yield_service,
+    what_if_price_service,
+)
+
 
 app = FastAPI(
     title="AgriInsight AI - Multi-Modal Agricultural Decision Support System",
@@ -97,3 +109,16 @@ def assess_risk_endpoint(
 ):
     req = {"district": district, "crop": crop, "season": season, "areaHectare": areaHectare}
     return assess_risk(req)
+@app.get("/api/explain/price", response_model=SHAPExplanationResponse)
+def explain_price(commodity: str = Query("Soyabean")):
+    return explain_price_service(commodity)
+
+
+@app.post("/api/whatif/yield", response_model=WhatIfYieldResponse)
+def what_if_yield(request: WhatIfYieldRequest):
+    return what_if_yield_service(request.model_dump())
+
+
+@app.post("/api/whatif/price", response_model=WhatIfPriceResponse)
+def what_if_price(request: WhatIfPriceRequest):
+    return what_if_price_service(request.model_dump())
