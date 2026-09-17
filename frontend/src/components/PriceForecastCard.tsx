@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { TrendingUp, ChevronDown, ArrowUpRight } from 'lucide-react';
+import { TrendingUp, ChevronDown, ArrowUpRight, ArrowDownRight, Loader2 } from 'lucide-react';
 import {
   LineChart,
   Line,
@@ -12,34 +12,68 @@ import {
   ResponsiveContainer,
   ReferenceDot,
 } from 'recharts';
+import { PriceForecastData } from '@/lib/api';
 
-interface PricePoint {
-  date: string;
-  historical?: number;
-  predicted?: number;
+interface PriceForecastCardProps {
+  cropName?: string;
+  priceData?: PriceForecastData | null;
+  isLoading?: boolean;
 }
 
-const PRICE_DATA: PricePoint[] = [
-  { date: 'Aug 1', historical: 1800 },
-  { date: 'Aug 4', historical: 2100 },
-  { date: 'Aug 8', historical: 2200 },
-  { date: 'Aug 11', historical: 1950 },
-  { date: 'Aug 15', historical: 1600 },
-  { date: 'Aug 18', historical: 1900 },
-  { date: 'Aug 22', historical: 2000, predicted: 2000 },
-  { date: 'Aug 25', predicted: 2150 },
-  { date: 'Aug 29', predicted: 2320 },
-];
+const DEFAULT_CROP_PRICES: Record<string, { base: number; change: number; risk: string }> = {
+  Onion: { base: 2320, change: 12, risk: 'Medium' },
+  Soybean: { base: 4650, change: 8, risk: 'Low' },
+  Cotton: { base: 7200, change: 15, risk: 'High' },
+  Tur: { base: 9400, change: -4, risk: 'Medium' },
+  Wheat: { base: 2600, change: 5, risk: 'Low' },
+  Rice: { base: 2850, change: 6, risk: 'Low' },
+};
 
-export const PriceForecastCard: React.FC = () => {
+export const PriceForecastCard: React.FC<PriceForecastCardProps> = ({
+  cropName = 'Onion',
+  priceData,
+  isLoading = false,
+}) => {
   const [isMounted, setIsMounted] = useState(false);
 
   useEffect(() => {
     setIsMounted(true);
   }, []);
 
+  const cropMeta = DEFAULT_CROP_PRICES[cropName] || { base: 2500, change: 10, risk: 'Medium' };
+
+  // Use API time series if available, otherwise generate dynamic curve based on selected crop
+  const chartData = priceData?.timeSeries?.map((pt) => ({
+    date: pt.date.slice(5).replace('-', '/'),
+    historical: pt.actualPrice ?? undefined,
+    predicted: pt.forecastPrice,
+  })) || [
+    { date: 'Aug 1', historical: Math.round(cropMeta.base * 0.82) },
+    { date: 'Aug 4', historical: Math.round(cropMeta.base * 0.9) },
+    { date: 'Aug 8', historical: Math.round(cropMeta.base * 0.95) },
+    { date: 'Aug 11', historical: Math.round(cropMeta.base * 0.85) },
+    { date: 'Aug 15', historical: Math.round(cropMeta.base * 0.72) },
+    { date: 'Aug 18', historical: Math.round(cropMeta.base * 0.82) },
+    { date: 'Aug 22', historical: Math.round(cropMeta.base * 0.86), predicted: Math.round(cropMeta.base * 0.86) },
+    { date: 'Aug 25', predicted: Math.round(cropMeta.base * 0.92) },
+    { date: 'Aug 29', predicted: cropMeta.base },
+  ];
+
+  const predictedPrice = priceData?.predictedAvgPrice ?? cropMeta.base;
+  const changePct = priceData?.expectedChangePct ?? cropMeta.change;
+  const isPositive = changePct >= 0;
+  const riskLevel = priceData?.volatilityIndex || cropMeta.risk;
+  const lastPoint = chartData[chartData.length - 1];
+
   return (
-    <div className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-xs flex flex-col justify-between h-full">
+    <div className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-xs flex flex-col justify-between h-full relative">
+      {/* Loading Spinner overlay */}
+      {isLoading && (
+        <div className="absolute inset-0 bg-white/70 backdrop-blur-xs rounded-2xl flex items-center justify-center z-20">
+          <Loader2 className="w-6 h-6 text-[#0F7A4C] animate-spin" />
+        </div>
+      )}
+
       {/* Card Header */}
       <div>
         <div className="flex items-center justify-between mb-1">
@@ -61,7 +95,7 @@ export const PriceForecastCard: React.FC = () => {
         </div>
 
         <p className="text-[11px] text-slate-500 font-medium mb-3">
-          Predicted mandi price for Onion (₹/quintal)
+          Predicted mandi price for <span className="font-bold text-slate-700">{cropName}</span> (₹/quintal)
         </p>
 
         {/* Legend */}
@@ -81,8 +115,8 @@ export const PriceForecastCard: React.FC = () => {
           {isMounted ? (
             <ResponsiveContainer width="100%" height="100%">
               <LineChart
-                data={PRICE_DATA}
-                margin={{ top: 15, right: 15, left: -20, bottom: 0 }}
+                data={chartData}
+                margin={{ top: 15, right: 15, left: -15, bottom: 0 }}
               >
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
                 <XAxis
@@ -92,8 +126,6 @@ export const PriceForecastCard: React.FC = () => {
                   tick={{ fontSize: 10, fill: '#64748B' }}
                 />
                 <YAxis
-                  domain={[0, 4000]}
-                  ticks={[0, 1000, 2000, 3000, 4000]}
                   tickLine={false}
                   axisLine={false}
                   tick={{ fontSize: 10, fill: '#64748B' }}
@@ -108,17 +140,14 @@ export const PriceForecastCard: React.FC = () => {
                     boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
                   }}
                 />
-                {/* Historical solid line */}
                 <Line
                   type="monotone"
                   dataKey="historical"
                   stroke="#0F7A4C"
                   strokeWidth={2}
                   dot={false}
-                  activeDot={{ r: 4, fill: '#0F7A4C' }}
                   connectNulls
                 />
-                {/* Predicted dashed line */}
                 <Line
                   type="monotone"
                   dataKey="predicted"
@@ -126,27 +155,30 @@ export const PriceForecastCard: React.FC = () => {
                   strokeWidth={2}
                   strokeDasharray="4 4"
                   dot={{ r: 3, fill: '#0F7A4C' }}
-                  activeDot={{ r: 5, fill: '#0F7A4C' }}
                   connectNulls
                 />
-                <ReferenceDot
-                  x="Aug 29"
-                  y={2320}
-                  r={5}
-                  fill="#0F7A4C"
-                  stroke="#FFFFFF"
-                  strokeWidth={2}
-                />
+                {lastPoint && (
+                  <ReferenceDot
+                    x={lastPoint.date}
+                    y={lastPoint.predicted || lastPoint.historical || predictedPrice}
+                    r={5}
+                    fill="#0F7A4C"
+                    stroke="#FFFFFF"
+                    strokeWidth={2}
+                  />
+                )}
               </LineChart>
             </ResponsiveContainer>
           ) : (
             <div className="w-full h-full bg-slate-50 animate-pulse rounded-lg" />
           )}
 
-          {/* Callout Overlay matching screenshot */}
+          {/* Callout Overlay */}
           <div className="absolute top-2 right-4 bg-white border border-slate-200 shadow-md rounded-lg p-1.5 px-2 text-[10px] text-center z-10">
             <p className="text-slate-400 font-medium leading-none mb-0.5">Aug 29, 2025</p>
-            <p className="font-extrabold text-slate-900 text-xs leading-none">₹ 2,320</p>
+            <p className="font-extrabold text-slate-900 text-xs leading-none">
+              ₹ {predictedPrice.toLocaleString()}
+            </p>
           </div>
         </div>
       </div>
@@ -156,14 +188,23 @@ export const PriceForecastCard: React.FC = () => {
         {/* Sub-card 1: Predicted Price */}
         <div className="bg-slate-50/70 rounded-xl p-2.5 border border-slate-100">
           <p className="text-[10px] font-medium text-slate-500 mb-0.5">
-            Predicted Price <span className="text-[9px] text-slate-400">(Next 30 days)</span>
+            Predicted Price <span className="text-[9px] text-slate-400">(30 days)</span>
           </p>
           <p className="text-sm font-extrabold text-slate-900">
-            ₹ 2,320 <span className="text-[10px] font-normal text-slate-500">/quintal</span>
+            ₹ {predictedPrice.toLocaleString()}{' '}
+            <span className="text-[10px] font-normal text-slate-500">/qtl</span>
           </p>
-          <div className="flex items-center gap-1 mt-1 text-[#0F7A4C] font-bold text-[10px]">
-            <ArrowUpRight className="w-3 h-3" />
-            <span>12%</span>
+          <div
+            className={`flex items-center gap-1 mt-1 font-bold text-[10px] ${
+              isPositive ? 'text-[#0F7A4C]' : 'text-red-500'
+            }`}
+          >
+            {isPositive ? (
+              <ArrowUpRight className="w-3 h-3" />
+            ) : (
+              <ArrowDownRight className="w-3 h-3" />
+            )}
+            <span>{Math.abs(changePct)}%</span>
             <span className="font-normal text-slate-400 text-[9px]">vs last month</span>
           </div>
         </div>
@@ -183,12 +224,20 @@ export const PriceForecastCard: React.FC = () => {
         <div className="bg-slate-50/70 rounded-xl p-2.5 border border-slate-100 flex flex-col justify-between">
           <div>
             <p className="text-[10px] font-medium text-slate-500 mb-1">Risk Level</p>
-            <span className="inline-block px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 text-[10px] font-bold">
-              Medium
+            <span
+              className={`inline-block px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                riskLevel === 'HIGH' || riskLevel === 'High'
+                  ? 'bg-red-100 text-red-800'
+                  : riskLevel === 'LOW' || riskLevel === 'Low'
+                  ? 'bg-emerald-100 text-emerald-800'
+                  : 'bg-amber-100 text-amber-800'
+              }`}
+            >
+              {riskLevel}
             </span>
           </div>
           <p className="text-[9px] text-slate-400 font-medium leading-tight mt-1">
-            Moderate market volatility expected
+            Market volatility assessment
           </p>
         </div>
       </div>

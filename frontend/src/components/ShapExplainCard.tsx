@@ -10,15 +10,50 @@ interface Factor {
   barPercentage: number;
 }
 
-const SHAP_FACTORS: Factor[] = [
-  { name: 'Supply in Maharashtra', impact: 0.38, color: 'bg-rose-400', barPercentage: 90 },
-  { name: 'Rainfall (last 30 days)', impact: 0.22, color: 'bg-sky-500', barPercentage: 60 },
-  { name: 'Demand from other states', impact: 0.18, color: 'bg-sky-400', barPercentage: 45 },
-  { name: 'Export demand', impact: 0.12, color: 'bg-indigo-300', barPercentage: 32 },
-  { name: 'Previous year\'s trend', impact: 0.08, color: 'bg-purple-300', barPercentage: 22 },
-];
+const CROP_SHAP_FACTORS: Record<string, Factor[]> = {
+  Onion: [
+    { name: 'Supply in Maharashtra Mandis', impact: 0.38, color: 'bg-rose-400', barPercentage: 90 },
+    { name: 'Rainfall (last 30 days)', impact: 0.22, color: 'bg-sky-500', barPercentage: 60 },
+    { name: 'Inter-State Demand (South India)', impact: 0.18, color: 'bg-sky-400', barPercentage: 45 },
+    { name: 'Export Duty & Curbs Policy', impact: 0.12, color: 'bg-indigo-300', barPercentage: 32 },
+    { name: 'Storage & Harvest Trend', impact: 0.08, color: 'bg-purple-300', barPercentage: 22 },
+  ],
+  Soybean: [
+    { name: 'Global Palm & Soy Oil Prices', impact: 0.42, color: 'bg-amber-500', barPercentage: 92 },
+    { name: 'Latur & Vidarbha Mandi Arrivals', impact: 0.28, color: 'bg-rose-400', barPercentage: 70 },
+    { name: 'Soil Moisture & Monsoonal Rain', impact: 0.18, color: 'bg-sky-500', barPercentage: 48 },
+    { name: 'Poultry Feed Meal Demand', impact: 0.12, color: 'bg-emerald-400', barPercentage: 30 },
+  ],
+  Cotton: [
+    { name: 'Pest Impact (Pink Bollworm)', impact: 0.35, color: 'bg-rose-500', barPercentage: 88 },
+    { name: 'Yarn & Textile Mill Demand', impact: 0.25, color: 'bg-indigo-400', barPercentage: 65 },
+    { name: 'International Cotton (Cotlook A)', impact: 0.20, color: 'bg-sky-500', barPercentage: 50 },
+    { name: 'MSP Procurement Volume', impact: 0.10, color: 'bg-[#0F7A4C]', barPercentage: 28 },
+  ],
+  Tur: [
+    { name: 'Buffer Stock & Import Inflow', impact: 0.39, color: 'bg-amber-500', barPercentage: 89 },
+    { name: 'Unseasonal Rain during Flowering', impact: 0.26, color: 'bg-rose-400', barPercentage: 62 },
+    { name: 'Festival Season Wholesale Demand', impact: 0.19, color: 'bg-sky-400', barPercentage: 45 },
+  ],
+  Wheat: [
+    { name: 'FCI Procurement & Open Sale', impact: 0.36, color: 'bg-amber-400', barPercentage: 85 },
+    { name: 'Rabi Heatwave & Temperature', impact: 0.24, color: 'bg-rose-400', barPercentage: 58 },
+    { name: 'Flour Mill Wholesale Demand', impact: 0.18, color: 'bg-emerald-400', barPercentage: 42 },
+  ],
+  Rice: [
+    { name: 'Konkan & Bhandara Rainfall', impact: 0.37, color: 'bg-sky-500', barPercentage: 87 },
+    { name: 'Non-Basmati Export Quota', impact: 0.25, color: 'bg-indigo-400', barPercentage: 62 },
+    { name: 'Government MSP Stocks', impact: 0.15, color: 'bg-[#0F7A4C]', barPercentage: 38 },
+  ],
+};
 
-export const ShapExplainCard: React.FC = () => {
+interface ShapExplainCardProps {
+  cropName?: string;
+}
+
+export const ShapExplainCard: React.FC<ShapExplainCardProps> = ({ cropName = 'Onion' }) => {
+  const factors = CROP_SHAP_FACTORS[cropName] || CROP_SHAP_FACTORS.Onion;
+
   return (
     <div className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-xs">
       {/* Card Header */}
@@ -31,12 +66,12 @@ export const ShapExplainCard: React.FC = () => {
         </h3>
       </div>
       <p className="text-[11px] text-slate-500 font-medium mb-4">
-        Top factors affecting price (SHAP)
+        Top factors affecting <span className="font-bold text-slate-700">{cropName}</span> price (SHAP)
       </p>
 
       {/* Factor List with Bars */}
       <div className="space-y-3 mb-4">
-        {SHAP_FACTORS.map((factor) => (
+        {factors.map((factor) => (
           <div key={factor.name} className="flex items-center justify-between text-xs gap-3">
             <span className="text-[11px] font-medium text-slate-700 truncate w-44 shrink-0">
               {factor.name}
