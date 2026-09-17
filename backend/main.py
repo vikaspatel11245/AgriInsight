@@ -1,6 +1,8 @@
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
-
+from backend.schemas import SHAPExplanationResponse  # already imported above, just confirming
+from backend.services import explain_yield_service
+from backend.services import assess_risk
 from backend.schemas import (
     YieldPredictionRequest,
     YieldPredictionResponse,
@@ -74,7 +76,24 @@ def forecast_price(
 ):
     return forecast_price_service(commodity, market)
 
-
+@app.get("/api/explain/yield", response_model=SHAPExplanationResponse)
+def explain_yield(
+    district: str = Query("Nashik"),
+    crop: str = Query("Soyabean"),
+    season: str = Query("Kharif"),
+    areaHectare: float = Query(2.5),
+):
+    req = {"district": district, "crop": crop, "season": season, "areaHectare": areaHectare}
+    return explain_yield_service(req)
 # NOTE: /api/explain/yield and /api/assess/risk are intentionally left out here.
 # They currently exist only as hardcoded placeholder logic — we'll replace
 # them with real SHAP + risk scoring in Steps 6 and 7, not before.
+@app.get("/api/assess/risk", response_model=RiskAssessmentResponse)
+def assess_risk_endpoint(
+    district: str = Query("Nashik"),
+    crop: str = Query("Soyabean"),
+    season: str = Query("Kharif"),
+    areaHectare: float = Query(2.5),
+):
+    req = {"district": district, "crop": crop, "season": season, "areaHectare": areaHectare}
+    return assess_risk(req)

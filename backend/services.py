@@ -4,6 +4,8 @@ import pandas as pd
 from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Dict, Any
+from src.explainability.shap_explainer import explain_yield_prediction
+from src.explainability.risk_confidence import assess_risk_service
 
 # Resolve project root so this works no matter what directory you launch uvicorn from
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -268,3 +270,42 @@ def forecast_price_service(commodity: str, market: str) -> Dict[str, Any]:
         "volatilityIndex": "HIGH" if crop_info["category"] in ["Pulse", "Vegetable"] else "MEDIUM",
         "timeSeries": time_series,
     }
+
+def explain_yield_service(req: Dict[str, Any]) -> Dict[str, Any]:
+    if yield_pipeline is None:
+        raise RuntimeError("Yield model not loaded — run src/yield_model.py first.")
+    input_df = build_yield_input_df(req)
+    return explain_yield_prediction(yield_pipeline, input_df)
+
+PRICE_DATA_PATH = PROJECT_ROOT / "data" / "AgriInsight_Price_Training_Dataset_CLEAN.csv"
+price_history_df = None
+if PRICE_DATA_PATH.exists():
+    price_history_df = pd.read_csv(PRICE_DATA_PATH, parse_dates=["Date"])
+    print(f"[ML Engine] Loaded price history for risk scoring ({len(price_history_df):,} rows)")
+else:
+    print(f"[ML Engine Warning] Price history not found at '{PRICE_DATA_PATH}' — price risk will use fallback.")
+
+
+def assess_risk(req: Dict[str, Any]) -> Dict[str, Any]:
+    if yield_pipeline is None:
+        raise RuntimeError("Yield model not loaded — run src/yield_model.py first.")
+
+    district = req.get("district", "Nashik")
+    crop = req.get("crop", "Soyabean")
+    dist_info = DISTRICT_DATA.get(district, DISTRICT_DATA["Nashik"])
+
+    input_df = build_yield_input_df(req)
+    ndvi_mean = req.get("ndviMean", dist_info["avgNdvi"])
+    temp_c = req.get("temperatureC", 28.5)
+    precip = req.get("precipitationMmDay", 4.8)
+
+    return assess_risk_service(
+        yield_pipeline=yield_pipeline,
+        input_df=input_df,
+        ndvi_mean=ndvi_mean,
+        temperature_c=temp_c,
+        precipitation_mm_day=precip,
+        price_df=price_history_df if price_history_df is not None else pd.DataFrame(columns=["Crop", "District", "Date", "Modal_Price"]),
+        crop=crop,
+        district=district,
+    )
